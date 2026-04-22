@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pokemon Master's Memory - Blue Cartoon Edition</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+    <style>
+        /* --- 整体背景：恢复清爽蓝色调 --- */
+        body { margin: 0; overflow: hidden; background-color: #4686b4; font-family: 'Arial Rounded MT Bold', -apple-system, sans-serif; transition: background-color 1.5s ease; }
+        
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; display: flex; flex-direction: column;
+            justify-content: space-between; align-items: center; padding: 40px; box-sizing: border-box;
+            background: radial-gradient(circle at center, transparent 0%, rgba(255,255,255,0.4) 100%);
+            transition: background 1.5s ease;
+        }
+
+        /* --- 爆炸后的梦幻背景 --- */
+        #ui-layer.exploded {
+            background: radial-gradient(circle at center, transparent 0%, rgba(255, 182, 193, 0.3) 100%);
+        }
+
+        /* --- 标题基础样式 --- */
+        h1 {
+            color: #ffffff;
+            text-shadow: 0 0 10px rgb(255, 255, 255);
+            font-size: 2rem;
+            letter-spacing: 5px;
+            margin-top: 335px; /* 初始位置 */
+            opacity: 0;
+            animation: bounceIn 1.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+            transition: all 1.2s cubic-bezier(0.4, 0, 0.2, 1); /* 添加位置移动的平滑过渡 */
+        }
+
+        /* --- 标题移动后的位置 (集成功能) --- */
+        #ui-layer.exploded h1 {
+            margin-top: 120px; /* 爆炸后向上移动 */
+            font-size: 10rem; /* 稍微放大增强视觉冲击 */
+            color: #ffffff46; /* 变为庆典感的金色/黄色 */
+            text-shadow: 0 0 20px rgba(255, 241, 118, 0.2);
+        }
+
+        #explode-btn {
+            pointer-events: auto; 
+            background: linear-gradient(135deg, #FF5959 0%, #FF2E2E 100%); 
+            border: 4px solid #fff; 
+            color: #fff; 
+            padding: 16px 48px; 
+            font-size: 1.35rem; 
+            border-radius: 60px; 
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            margin-bottom: 60px; 
+            font-weight: bold; 
+            box-shadow: 0 8px 0px #cc0000, 0 10px 20px rgba(255,0,0,0.3);
+            text-shadow: 1px 2px 2px rgba(0,0,0,0.2);
+        }
+
+        #explode-btn:hover { transform: scale(1.08); box-shadow: 0 5px 0px #cc0000, 0 10px 20px rgba(255,0,0,0.3); }
+        #explode-btn:active { transform: translateY(5px); box-shadow: 0 1px 0px #cc0000, 0 10px 20px rgba(255,0,0,0.3); }
+
+        @keyframes bounceIn {
+            0% { transform: scale(0.3); opacity: 0; }
+            70% { transform: scale(1.05); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <h1 id="main-title">Tomson since 1996</h1>
+        <button id="explode-btn">就决定是你了！</button>
+    </div>
+
+    <script>
+        let scene, camera, renderer, controls;
+        let particleGroup, model_a, model_b, starPoints;
+        let photos = []; let photoGroup;
+        let textSprites = []; let textGroup;
+        let isExploded = false;
+
+        const CONFIG = {
+            photoCount: 20,
+            scaleA: 3,
+            scaleB: 25,
+            photoRadius: 50, 
+            colorDay: 0x000000,
+            colorExplode: 0xffa128,
+            messages: ["内心平静自洽，突破限制思维", "long-term-relationship", "再品品", "记得培养感知快乐的能力", "记得保持理想主义", "记得放松一点", "记得学会人类的语言", "也合理"],
+            starCount: 2000,
+            starSize: 2.0, 
+            elementImageCount: 5,   
+            elementTotalCount: 300, 
+            elementSize: 15
+        };
+
+        init();
+        animate();
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(CONFIG.colorDay);
+            scene.fog = new THREE.Fog(CONFIG.colorDay, 20, 250);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1500); 
+            camera.position.set(0, 5, 20);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.body.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.autoRotate = true;
+            controls.autoRotateSpeed = 0.5;
+
+            scene.add(new THREE.HemisphereLight(0xffffff, 0xD1C4E9, 1.5)); 
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+            directionalLight.position.set(5, 10, 7);
+            scene.add(directionalLight);
+            
+            particleGroup = new THREE.Group();
+            scene.add(particleGroup);
+
+            createLayeredParticles(); 
+            loadModels();
+            createPhotoCards();
+            createTropicalText(); 
+
+            window.addEventListener('resize', onWindowResize, false);
+            document.getElementById('explode-btn').addEventListener('click', toggleExplosion);
+        }
+
+        function createTropicalText() {
+            textGroup = new THREE.Group();
+            scene.add(textGroup);
+
+            CONFIG.messages.forEach((msg, i) => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                // --- 1. 动态测量文字宽度 ---
+                const fontSize = 60;
+                ctx.font = `Bold ${fontSize}px Arial`;
+                const textWidth = ctx.measureText(msg).width;
+                
+                // 为发光效果留出余量 (左右各加50px)
+                canvas.width = textWidth + 100; 
+                canvas.height = fontSize + 60;
+
+                // --- 2. 重新设置 Context 属性 (Canvas尺寸改变后会重置) ---
+                ctx.shadowColor = 'rgba(255, 255, 255, 1)';
+                ctx.shadowBlur = 20;
+                ctx.shadowOffsetX = 0;
+                ctx.shadowOffsetY = 0;
+                ctx.font = `Bold ${fontSize}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = '#ffffff';
+                
+                // 在画布中心绘制
+                ctx.fillText(msg, canvas.width / 2, canvas.height / 2);
+
+                const texture = new THREE.CanvasTexture(canvas);
+                const spriteMaterial = new THREE.SpriteMaterial({ map: texture, transparent: true, opacity: 0 });
+                const sprite = new THREE.Sprite(spriteMaterial);
+                
+                // --- 3. 按照文字实际比例缩放 Sprite，防止字被压扁 ---
+                const aspect = canvas.width / canvas.height;
+                // 2.25 是你原来代码里的高度比例，这里根据比例自动计算宽度
+                sprite.scale.set(2.25 * aspect, 2.25, 1); 
+                
+                const phi = Math.PI / 2 + (Math.random() - 0.5) * 0.7; 
+                const theta = (i / CONFIG.messages.length) * Math.PI * 2 + Math.random() * 0.4;
+                const randomRadius = 45 + (Math.random() - 0.5) * 8; 
+
+                sprite.userData = {
+                    targetPos: new THREE.Vector3().setFromSphericalCoords(randomRadius, phi, theta),
+                    startPos: new THREE.Vector3(0, 0, 0)
+                };
+
+                sprite.position.copy(sprite.userData.startPos);
+                textGroup.add(sprite);
+                textSprites.push(sprite);
+            });
+        }
+
+        function createLayeredParticles() {
+            const loader = new THREE.TextureLoader();
+            loader.load('images/star.png', (texture) => {
+                const geo = new THREE.BufferGeometry();
+                const pos = [];
+                const colors = [];
+                const neonPalette = [new THREE.Color(0xFF80AB), new THREE.Color(0x81D4FA), new THREE.Color(0xB39DDB), new THREE.Color(0xFFF9C4)];
+                for (let i = 0; i < CONFIG.starCount; i++) {
+                    pos.push(THREE.MathUtils.randFloatSpread(600), THREE.MathUtils.randFloatSpread(600), THREE.MathUtils.randFloatSpread(600));
+                    const c = neonPalette[Math.floor(Math.random() * neonPalette.length)];
+                    colors.push(c.r, c.g, c.b);
+                }
+                geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+                geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); 
+                const mat = new THREE.PointsMaterial({
+                    size: CONFIG.starSize, map: texture, transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending,
+                    vertexColors: true 
+                });
+                starPoints = new THREE.Points(geo, mat);
+                particleGroup.add(starPoints);
+            });
+
+            const countPerType = Math.floor(CONFIG.elementTotalCount / CONFIG.elementImageCount);
+            for (let i = 1; i <= CONFIG.elementImageCount; i++) {
+                loader.load(`images/particle${i}.png`, (texture) => {
+                    const geo = new THREE.BufferGeometry();
+                    const pos = [];
+                    for (let j = 0; j < countPerType; j++) {
+                        pos.push(THREE.MathUtils.randFloatSpread(500), THREE.MathUtils.randFloatSpread(500), THREE.MathUtils.randFloatSpread(500));
+                    }
+                    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+                    const mat = new THREE.PointsMaterial({
+                        size: CONFIG.elementSize, map: texture, transparent: true, opacity: 0.8, depthWrite: false, alphaTest: 0.05
+                    });
+                    particleGroup.add(new THREE.Points(geo, mat));
+                });
+            }
+        }
+
+        function loadModels() {
+            const loader = new THREE.GLTFLoader();
+            loader.load('images/model_a.glb', (gltf) => {
+                model_a = gltf.scene;
+                model_a.traverse((child) => { if (child.isMesh) child.material.side = THREE.DoubleSide; });
+                model_a.scale.set(CONFIG.scaleA, CONFIG.scaleA, CONFIG.scaleA);
+                scene.add(model_a);
+            });
+            loader.load('images/model_b.glb', (gltf) => {
+                model_b = gltf.scene;
+                model_b.traverse((child) => { if (child.isMesh) child.material.side = THREE.DoubleSide; });
+                model_b.scale.set(0, 0, 0);
+                model_b.visible = false;
+                scene.add(model_b);
+            });
+        }
+
+        function createPhotoCards() {
+            photoGroup = new THREE.Group();
+            scene.add(photoGroup);
+            const loader = new THREE.TextureLoader();
+            for (let i = 0; i < CONFIG.photoCount; i++) {
+                const texture = loader.load(`images/${i + 1}.png`);
+                const photo = new THREE.Mesh(
+                    new THREE.PlaneGeometry(4, 4.547), 
+                    new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide, transparent: true, opacity: 0 })
+                );
+                const phi = Math.acos(-1 + (2 * i) / CONFIG.photoCount); 
+                const theta = Math.sqrt(CONFIG.photoCount * Math.PI) * phi; 
+                photo.userData = {
+                    targetPos: new THREE.Vector3().setFromSphericalCoords(CONFIG.photoRadius, phi, theta),
+                    startPos: new THREE.Vector3().setFromSphericalCoords(2, phi, theta)
+                };
+                photo.position.copy(photo.userData.startPos);
+                photo.scale.set(0.1, 0.1, 0.1); 
+                photoGroup.add(photo);
+                photos.push(photo);
+            }
+        }
+
+        function toggleExplosion() {
+            isExploded = !isExploded;
+            const btn = document.getElementById('explode-btn');
+            const title = document.getElementById('main-title');
+            const ui = document.getElementById('ui-layer');
+
+            if (isExploded) {
+                ui.classList.add('exploded'); // 触发 CSS 中的标题位移和颜色改变
+                new TWEEN.Tween(camera.position).to({ x: 30, y: 15, z: 80}, 2000).easing(TWEEN.Easing.Cubic.Out).start();
+                const targetColor = new THREE.Color(CONFIG.colorExplode);
+                new TWEEN.Tween(scene.background).to({ r: targetColor.r, g: targetColor.g, b: targetColor.b }, 600).start(); 
+                new TWEEN.Tween(scene.fog.color).to({ r: targetColor.r, g: targetColor.g, b: targetColor.b }, 600).start(); 
+
+                if(model_a) new TWEEN.Tween(model_a.scale).to({ x: 0, y: 0, z: 0 }, 800).easing(TWEEN.Easing.Back.In).start();
+                if(model_b) {
+                    model_b.visible = true;
+                    new TWEEN.Tween(model_b.scale).to({ x: CONFIG.scaleB, y: CONFIG.scaleB, z: CONFIG.scaleB }, 1500).delay(400).easing(TWEEN.Easing.Elastic.Out).start();
+                }
+                photos.forEach((photo, i) => {
+                    new TWEEN.Tween(photo.position).to(photo.userData.targetPos, 1500).delay(i * 15).easing(TWEEN.Easing.Quartic.Out).start();
+                    new TWEEN.Tween(photo.material).to({ opacity: 1 }, 1000).delay(200).start();
+                    new TWEEN.Tween(photo.scale).to({ x: 3, y: 3, z: 3 }, 1000).delay(i * 15).start();
+                });
+                textSprites.forEach((sprite, i) => {
+                    new TWEEN.Tween(sprite.position).to(sprite.userData.targetPos, 1500).delay(300 + i * 50).easing(TWEEN.Easing.Quartic.Out).start();
+                    new TWEEN.Tween(sprite.material).to({ opacity: 1 }, 1000).delay(500).start();
+                });
+                btn.innerText = "准备好了吗？";
+                title.innerText = "Happy Birthday";
+            } else {
+                ui.classList.remove('exploded'); // 恢复初始状态
+                new TWEEN.Tween(camera.position).to({ x: 0, y: 5, z: 20 }, 1500).easing(TWEEN.Easing.Cubic.InOut).start();
+                const startColor = new THREE.Color(CONFIG.colorDay);
+                new TWEEN.Tween(scene.background).to({ r: startColor.r, g: startColor.g, b: startColor.b }, 1000).start();
+                new TWEEN.Tween(scene.fog.color).to({ r: startColor.r, g: startColor.g, b: startColor.b }, 1000).start(); 
+
+                if(model_b) new TWEEN.Tween(model_b.scale).to({ x: 0, y: 0, z: 0 }, 800).easing(TWEEN.Easing.Back.In).start();
+                if(model_a) new TWEEN.Tween(model_a.scale).to({ x: CONFIG.scaleA, y: CONFIG.scaleA, z: CONFIG.scaleA }, 1200).delay(400).easing(TWEEN.Easing.Back.Out).start();
+
+                photos.forEach(photo => {
+                    new TWEEN.Tween(photo.position).to(photo.userData.startPos, 1200).easing(TWEEN.Easing.Back.In).start();
+                    new TWEEN.Tween(photo.material).to({ opacity: 0 }, 600).start();
+                    new TWEEN.Tween(photo.scale).to({ x: 0.1, y: 0.1, z: 0.1 }, 600).start();
+                });
+                textSprites.forEach(sprite => {
+                    new TWEEN.Tween(sprite.position).to(new THREE.Vector3(0,0,0), 1000).start();
+                    new TWEEN.Tween(sprite.material).to({ opacity: 0 }, 500).start();
+                });
+                btn.innerText = "就决定是你了！";
+                title.innerText = "Tomson since 1996";
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate(time) {
+            requestAnimationFrame(animate);
+            TWEEN.update(time);
+            controls.update();
+            if(model_a) model_a.rotation.y += 0.005;
+            if(model_b) model_b.rotation.y += 0.01;
+            if(particleGroup) {
+                particleGroup.rotation.y += 0.0006;
+                particleGroup.rotation.x += 0.0002;
+            }
+            if(starPoints) {
+                const elapsed = Date.now() * 0.001;
+                starPoints.material.size = CONFIG.starSize + Math.sin(elapsed * 2) * 0.3;
+                starPoints.material.opacity = 0.7 + Math.sin(elapsed * 1.5) * 0.2;
+            }
+            if(isExploded || (photos.length > 0 && photos[0].material.opacity > 0.1)) {
+                photos.forEach(photo => photo.lookAt(camera.position));
+                photoGroup.rotation.y += 0.0012; 
+                if(textGroup) textGroup.rotation.y -= 0.0008; 
+            }
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
